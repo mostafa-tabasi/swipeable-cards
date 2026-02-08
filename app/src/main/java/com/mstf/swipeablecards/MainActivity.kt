@@ -12,28 +12,34 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.mstf.swipeablecards.ui.theme.SwipeableCardsTheme
@@ -48,8 +54,61 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SwipeableCardsTheme {
+                // State for sliders
+                var topPeek by remember { mutableFloatStateOf(18f) }        // in dp
+                var scaleStep by remember { mutableFloatStateOf(0.06f) }
+                var alphaStep by remember { mutableFloatStateOf(0.15f) }
+                var maxVisible by remember { mutableFloatStateOf(4f) }      // will convert to Int
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    SwipeableDeck(modifier = Modifier.padding(innerPadding))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        SwipeableDeck(
+                            modifier = Modifier.padding(innerPadding),
+                            topPeek = topPeek.dp,
+                            scaleStep = scaleStep,
+                            alphaStep = alphaStep,
+                            maxVisible = maxVisible.toInt(),
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Sliders
+                        Text("Top Peek: ${topPeek.toInt()} dp")
+                        Slider(
+                            value = topPeek,
+                            onValueChange = { topPeek = it },
+                            valueRange = 0f..50f
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Scale Step: ${"%.2f".format(scaleStep)}")
+                        Slider(
+                            value = scaleStep,
+                            onValueChange = { scaleStep = it },
+                            valueRange = 0.01f..0.2f
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Alpha Step: ${"%.2f".format(alphaStep)}")
+                        Slider(
+                            value = alphaStep,
+                            onValueChange = { alphaStep = it },
+                            valueRange = 0.01f..0.5f
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Max Visible: ${maxVisible.toInt()}")
+                        Slider(
+                            value = maxVisible,
+                            onValueChange = { maxVisible = it },
+                            valueRange = 1f..6f,
+                            steps = 5
+                        )
+                    }
                 }
             }
         }
@@ -57,17 +116,17 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SwipeableDeck(modifier: Modifier = Modifier) {
-    val topPeek = 32.dp
-    val scaleStep = 0.06f
-    val alphaStep = 0.15f
+fun SwipeableDeck(
+    modifier: Modifier = Modifier,
+    topPeek: Dp,
+    scaleStep: Float,
+    alphaStep: Float,
+    maxVisible: Int
+) {
     val dismissThreshold = 120.dp
-    val maxVisible = 6 // Number of cards to draw for performance
-
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Full deck of cards
     val cards = remember {
         mutableStateListOf<Color>().apply {
             repeat(6) {
@@ -86,22 +145,24 @@ fun SwipeableDeck(modifier: Modifier = Modifier) {
     val offsetY = remember { Animatable(0f) }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        modifier = modifier
+            .wrapContentSize()
+            .padding(top = 150.dp),
+        contentAlignment = Alignment.TopCenter // Move deck to top
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(top = 16.dp) // Optional padding from top
                 .height(300.dp),
             contentAlignment = Alignment.BottomCenter
         ) {
+            val visible = cards.take(maxVisible)
 
-            // Draw top N cards from the deck
-            cards.take(maxVisible).reversed().forEachIndexed { reversedIndex, cardColor ->
+            visible.reversed().forEachIndexed { reversedIndex, cardColor ->
                 val cardIndex = cards.indexOf(cardColor)
                 val isTop = cardIndex == 0
 
-                // Animate position, scale, alpha based on current stack index
                 val animatedScale by animateFloatAsState(
                     targetValue = 1f - cardIndex * scaleStep,
                     animationSpec = spring(
@@ -109,12 +170,10 @@ fun SwipeableDeck(modifier: Modifier = Modifier) {
                         stiffness = Spring.StiffnessLow
                     )
                 )
-
                 val animatedAlpha by animateFloatAsState(
                     targetValue = 1f - cardIndex * alphaStep,
                     animationSpec = tween(250)
                 )
-
                 val animatedYOffset by animateDpAsState(
                     targetValue = -topPeek * cardIndex,
                     animationSpec = spring(
@@ -160,9 +219,7 @@ fun SwipeableDeck(modifier: Modifier = Modifier) {
                                                 coroutineScope.launch {
                                                     offsetX.animateTo(targetX, tween(300))
                                                 }.invokeOnCompletion {
-                                                    // Remove top card
                                                     cards.removeFirst()
-
                                                     coroutineScope.launch {
                                                         offsetX.snapTo(0f)
                                                         offsetY.snapTo(0f)
@@ -184,18 +241,7 @@ fun SwipeableDeck(modifier: Modifier = Modifier) {
                         defaultElevation = (maxVisible - cardIndex).times(5).dp
                     ),
                     colors = CardDefaults.cardColors(containerColor = cardColor)
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Card ${cardIndex + 1}",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    }
-                }
+                ) {}
             }
         }
     }
