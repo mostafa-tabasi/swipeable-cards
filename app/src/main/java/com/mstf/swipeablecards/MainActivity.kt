@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
                 var topPeek by remember { mutableFloatStateOf(18f) }        // in dp
                 var scaleStep by remember { mutableFloatStateOf(0.06f) }
                 var alphaStep by remember { mutableFloatStateOf(0.15f) }
-                var maxVisible by remember { mutableFloatStateOf(4f) }      // will convert to Int
+                var maxVisible by remember { mutableFloatStateOf(3f) }      // will convert to Int
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Column(
@@ -93,20 +93,20 @@ class MainActivity : ComponentActivity() {
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Alpha Step: ${"%.2f".format(alphaStep)}")
-                        Slider(
-                            value = alphaStep,
-                            onValueChange = { alphaStep = it },
-                            valueRange = 0.01f..0.5f
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
                         Text("Max Visible: ${maxVisible.toInt()}")
                         Slider(
                             value = maxVisible,
                             onValueChange = { maxVisible = it },
                             valueRange = 1f..6f,
                             steps = 5
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Alpha Step: ${"%.2f".format(alphaStep)}")
+                        Slider(
+                            value = alphaStep,
+                            onValueChange = { alphaStep = it },
+                            valueRange = 0.01f..0.5f
                         )
                     }
                 }
