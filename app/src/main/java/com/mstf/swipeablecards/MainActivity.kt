@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -27,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -55,18 +58,19 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SwipeableDeck(modifier: Modifier = Modifier) {
-    val visibleCards = 4
     val topPeek = 18.dp
     val scaleStep = 0.04f
     val alphaStep = 0.12f
     val dismissThreshold = 120.dp
+    val visibleCards = 4
 
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
+    // Stable random colors
     val cards = remember {
         mutableStateListOf<Color>().apply {
-            repeat(6) {
+            repeat(10) {
                 add(
                     Color.hsv(
                         hue = Random.nextFloat() * 360f,
@@ -78,6 +82,7 @@ fun SwipeableDeck(modifier: Modifier = Modifier) {
         }
     }
 
+    // Drag state for top card
     val offsetX = remember { Animatable(0f) }
     val offsetY = remember { Animatable(0f) }
 
@@ -91,97 +96,100 @@ fun SwipeableDeck(modifier: Modifier = Modifier) {
                 .height(280.dp),
             contentAlignment = Alignment.BottomCenter
         ) {
-            // IMPORTANT: draw from bottom → top
-            cards
-                .take(visibleCards)
-                .reversed()
-                .forEachIndexed { reversedIndex, color ->
+            // Take top visible cards
+            val visible = cards.take(visibleCards)
 
-                    val index = visibleCards - 1 - reversedIndex
-                    val isTop = index == 0
+            // Draw bottom → top for correct z-order
+            visible.reversed().forEachIndexed { reversedIndex, color ->
+                val index = visible.lastIndex - reversedIndex
+                val isTop = index == 0
 
-                    val scale by animateFloatAsState(
-                        targetValue = 1f - index * scaleStep,
-                        label = "scale"
-                    )
+                val scale by animateFloatAsState(
+                    targetValue = 1f - index * scaleStep,
+                    label = "scale"
+                )
+                val alpha by animateFloatAsState(
+                    targetValue = 1f - index * alphaStep,
+                    label = "alpha"
+                )
+                val yOffset by animateDpAsState(
+                    targetValue = -topPeek * index,
+                    label = "yOffset"
+                )
 
-                    val alpha by animateFloatAsState(
-                        targetValue = 1f - index * alphaStep,
-                        label = "alpha"
-                    )
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .height(210.dp)
+                        .offset {
+                            IntOffset(
+                                x = if (isTop) offsetX.value.roundToInt() else 0,
+                                y = if (isTop) offsetY.value.roundToInt()
+                                else with(density) { yOffset.roundToPx() }
+                            )
+                        }
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            this.alpha = alpha
+                            if (isTop) rotationZ = offsetX.value / 20f
+                        }
+                        .then(
+                            if (isTop)
+                                Modifier.pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            coroutineScope.launch {
+                                                offsetX.snapTo(offsetX.value + dragAmount.x)
+                                                offsetY.snapTo(offsetY.value + dragAmount.y)
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val thresholdPx =
+                                                with(density) { dismissThreshold.toPx() }
+                                            if (abs(offsetX.value) > thresholdPx) {
+                                                val targetX =
+                                                    if (offsetX.value > 0) 1500f else -1500f
 
-                    val yOffset by animateDpAsState(
-                        targetValue = -topPeek * index,
-                        label = "yOffset"
-                    )
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .height(210.dp)
-                            .offset {
-                                IntOffset(
-                                    x = if (isTop) offsetX.value.roundToInt() else 0,
-                                    y = if (isTop)
-                                        offsetY.value.roundToInt()
-                                    else
-                                        with(density) { yOffset.roundToPx() }
-                                )
-                            }
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                this.alpha = alpha
-                                if (isTop) {
-                                    rotationZ = offsetX.value / 20f
-                                }
-                            }
-                            .then(
-                                if (isTop)
-                                    Modifier.pointerInput(Unit) {
-                                        detectDragGestures(
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
                                                 coroutineScope.launch {
-                                                    offsetX.snapTo(offsetX.value + dragAmount.x)
-                                                    offsetY.snapTo(offsetY.value + dragAmount.y)
+                                                    offsetX.animateTo(targetX, tween(300))
+                                                }.invokeOnCompletion {
+                                                    cards.removeFirst()
+                                                    coroutineScope.launch {
+                                                        offsetX.snapTo(0f)
+                                                        offsetY.snapTo(0f)
+                                                    }
                                                 }
-                                            },
-                                            onDragEnd = {
-                                                val thresholdPx =
-                                                    with(density) { dismissThreshold.toPx() }
-
-                                                if (abs(offsetX.value) > thresholdPx) {
-                                                    val targetX =
-                                                        if (offsetX.value > 0) 1500f else -1500f
-
-                                                    coroutineScope.launch {
-                                                        offsetX.animateTo(targetX, tween(300))
-                                                    }.invokeOnCompletion {
-                                                        cards.removeFirst()
-                                                        coroutineScope.launch {
-                                                            offsetX.snapTo(0f)
-                                                            offsetY.snapTo(0f)
-                                                        }
-                                                    }
-                                                } else {
-                                                    coroutineScope.launch {
-                                                        offsetX.animateTo(0f, spring())
-                                                        offsetY.animateTo(0f, spring())
-                                                    }
+                                            } else {
+                                                coroutineScope.launch {
+                                                    offsetX.animateTo(0f, spring())
+                                                    offsetY.animateTo(0f, spring())
                                                 }
                                             }
-                                        )
-                                    }
-                                else Modifier
-                            ),
-                        shape = RoundedCornerShape(18.dp),
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = (visibleCards - index).times(5).dp
+                                        }
+                                    )
+                                }
+                            else Modifier
                         ),
-                        colors = CardDefaults.cardColors(containerColor = color)
-                    ) {}
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = (visibleCards - index).times(5).dp
+                    ),
+                    colors = CardDefaults.cardColors(containerColor = color)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Card ${index + 1}",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
                 }
+            }
         }
     }
 }
